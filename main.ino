@@ -20,9 +20,9 @@ int dir2_R_PIN = 5;
 int speed_R_PIN = 10;
 
 // PID
-float kp = 60.0;
-float ki = 1.00;
-float kd = 38;
+float kp = 10.0;
+float ki = 0.00;
+float kd = 5 ;
 float reference_angle = 0.0;
 float kp_error = 0.0;
 float ki_error = 0.0;
