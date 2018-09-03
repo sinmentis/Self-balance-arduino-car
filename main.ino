@@ -19,10 +19,14 @@ int dir2_R_PIN = 5;
 int speed_L_PIN = 10;
 
 // PID
-float kp = 4;
+float kp = 4.0;
 float ki = 0.005;
-float kd = 2;
-float desired_angle = 0;
+float kd = 2.0;
+float reference_angle = 0.0;
+float kp_error = 0.0;
+float ki_error = 0.0;
+float kd_error = 0.0;
+float kp_pass_error = 0.0;
 
 // Receiver
 enum re_command {forward=1, backward=2, left=3, right=4, stay=0};
@@ -30,6 +34,12 @@ int re_1 = 11;
 int re_2 = 8;
 int re_3 = 7;
 int re_4 = 6;
+
+// Timer
+unsigned long now_time;
+unsigned long pas_time;
+unsigned long dif_time;
+
 /*======================support function======================*/
 
 void UpdateIMUData(void)
@@ -43,10 +53,12 @@ void UpdateIMUData(void)
   acc_angle_x = atan(accelY/sqrt(pow(accelX,2)+pow(accelZ,2)))*rad_to_reg;
   acc_angle_y = atan(-1*accelX/sqrt(pow(accelY,2)+pow(accelZ,2)))*rad_to_reg;
 }
+  
 void printIMUData(void)
 {  
   Serial.println("Angle: " + String(acc_angle_y));
 }
+
 re_command check_receiver()
 {
   int re_1_state = digitalRead(re_1);
@@ -55,22 +67,31 @@ re_command check_receiver()
   int re_4_state = digitalRead(re_4);
   re_command command = stay;
   if (re_4_state == 1) {  // forward
-    
+    command = forward;
   }
   else if (re_3_state == 1) {  // backward
-    
+    command = backward;
   }
   else if (re_2_state == 1) {  // left
-    
+    command = left;
   }
   else if (re_1_state == 1) {  // right
-    
-  }
-  else {                       // Do nothing and keep balance
-    
+    command = right;
   }
 
-  return re_command;
+  return command;
+}
+
+float pid_control(){
+  kp_error = acc_angle_x - reference_angle;
+  ki_error += kp_error * dif_time;
+  kd_error = kp_error - kp_pass_error;
+  float kp_result = kp_error * kp;
+  float ki_result = ki_error * ki;
+  float kd_result = kd_error * kd;
+  float final_control = kp_result + ki_result + kd_result;
+  
+  return final_control;
 }
 
 
@@ -103,11 +124,18 @@ void setup() {
   pinMode(re_2, INPUT);
   pinMode(re_3, INPUT);
   pinMode(re_4, INPUT);
+
+  // Timer
+  pas_time = millis();
 }
 
 /*======================main loop======================*/
 void loop() {
-
+  // calculate time
+  now_time = millis();
+  dif_time = now_time - pas_time;
+  pas_time = now_time;
+  ;
   // Update IMU data
   if ( imu.dataReady() )
   {
@@ -115,19 +143,28 @@ void loop() {
     UpdateIMUData();
     printIMUData();
   }
-
+  while(1){
+    debug_receive_message();
+  }
   // Check the receive message  
   re_command command = check_receiver();
   if (command == forward) {
+    Serial.println("Received message: forward " + String(command));
   }
   else if (command == backward) {
+    Serial.println("Received message: backward " + String(command));
   }
   else if (command == left) {
+    Serial.println("Received message: left " + String(command));
   }
   else if (command == right) {
+    Serial.println("Received message: right " + String(command));
   }
   else {
+    Serial.println("Received message: stay " + String(command));
   }
+
+  float control_signal = pid_control();
 /* keyboard test
   if (Serial.available() > 0) {
     int input_command = Serial.read();
