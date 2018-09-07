@@ -32,10 +32,9 @@ int dir2_R_PIN = 5;
 int speed_R_PIN = 10;
 
 // PID
-float kp = 5.1;// 4.5
-float ki = 0.3;// 0.3
-float kd = 4.3;// 4.1
-float reference_angle = 0.0;
+float kp = 18;// 10.1 18
+float ki = 0.5;// 0.3
+float kd = 16;// 9.3 16
 float kp_error = 0.0;
 float ki_error = 0.0;
 float kd_error = 0.0;
@@ -44,14 +43,17 @@ float kp_result = 0;
 float ki_result = 0;
 float kd_result = 0;
 float final_result = 0;
+float overshoot_angle = 60;
+float PID_angle = 8;
+float reference_angle = 0.0;
 
 float MIN_SPEED = 25;
-float MAX_SPEED = 65;
+float MAX_SPEED = 50;
 
 // Joystick
 int joy_x = A0;
 enum re_command {forward = 1, backward = 2, stay = 0};
-float throttle = 55;
+float throttle = 45;
 
 // Timer
 float now_time;
@@ -101,13 +103,20 @@ re_command check_receiver()
 
 float pid_control() { // ONLY PD RIGHT NOW
   kp_error = kalAngleY - reference_angle;
+  if (kp_error >= overshoot_angle && kp_error <= -overshoot_angle) {
+    kp = 25;
+  }
   ki_error += kp_error * dif_time;
   kd_error = (kp_error - kp_pass_error) / dif_time;
   kp_result = kp_error * kp;
   ki_result = ki_error * ki;
   kd_result = kd_error * kd;
   kp_pass_error = kp_error;
-  final_result = kp_result + kd_result + ki_result;
+  if (kp_error <= PID_angle && kp_error >= -PID_angle) {
+    final_result = kp_result + kd_result + ki_result;
+  } else {
+    final_result = kp_result + kd_result;
+  }
   return final_result;
 }
 
@@ -192,7 +201,7 @@ void loop() {
     control_signal = -throttle;
     moving_flag = 1;
   }
-  
+
   // PID
   if (moving_flag == 0) {
     control_signal = pid_control();
