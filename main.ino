@@ -29,9 +29,9 @@ int dir2_R_PIN = 5;
 int speed_R_PIN = 10;
 
 // PID
-float kp = 10.0;
-float ki = 0.0;
-float kd = 4.2;
+float kp = 8;
+float ki = 0.1;
+float kd = 1;
 float reference_angle = 0.0;
 float kp_error = 0.0;
 float ki_error = 0.0;
@@ -42,7 +42,7 @@ float ki_result = 0;
 float kd_result = 0;
 float final_result = 0;
 float control_signal = 0;
-float MIN_SPEED = 30;
+float MIN_SPEED = 20;
 
 // Receiver
 enum re_command {forward = 1, backward = 2, left = 3, right = 4, stay = 0};
@@ -209,7 +209,7 @@ void loop() {
 
   // PID and motor
   float control_signal = pid_control();
-  control_signal = constrain(control_signal, -80, 80);
+  control_signal = constrain(control_signal, -90, 90);
   if (control_signal > 0 && control_signal < MIN_SPEED) {control_signal = MIN_SPEED;}
   else if (control_signal < 0  && control_signal > -MIN_SPEED) {control_signal = -MIN_SPEED;}
   
