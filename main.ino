@@ -2,8 +2,11 @@
 #include "I2Cdev.h"
 #include "Kalman.h"
 /*======================Global variable======================*/
+
+// Debug mode
 int PID_debug_mode = 1;
 int RF_debug_mode = 0;
+
 // MPU9250
 MPU9250_DMP imu_9250;
 float accelX, accelY, accelZ;
@@ -29,9 +32,9 @@ int dir2_R_PIN = 5;
 int speed_R_PIN = 10;
 
 // PID
-float kp = 8;
-float ki = 0.1;
-float kd = 1;
+float kp = 5.1;// 4.5
+float ki = 0.3;// 0.3
+float kd = 4.3;// 4.1
 float reference_angle = 0.0;
 float kp_error = 0.0;
 float ki_error = 0.0;
@@ -41,15 +44,14 @@ float kp_result = 0;
 float ki_result = 0;
 float kd_result = 0;
 float final_result = 0;
-float control_signal = 0;
-float MIN_SPEED = 20;
 
-// Receiver
-enum re_command {forward = 1, backward = 2, left = 3, right = 4, stay = 0};
-int re_1 = 11;
-int re_2 = 8;
-int re_3 = 7;
-int re_4 = 6;
+float MIN_SPEED = 25;
+float MAX_SPEED = 65;
+
+// Joystick
+int joy_x = A0;
+enum re_command {forward = 1, backward = 2, stay = 0};
+float throttle = 55;
 
 // Timer
 float now_time;
@@ -74,34 +76,24 @@ void UpdateIMUData(void)
 }
 
 void printIMUData(float control)
-{    
-  Serial.println("Angle: " + String(roll) + "                     kalAngleY: " + String(kalAngleY)+ "                        Control signal: " + String(control)+ "                       kp_error: " + String(kp_error));
+{
+  Serial.println("Angle: " + String(roll) + "                     kalAngleY: " + String(kalAngleY) + "                        Control signal: " + String(control) + "                       kp_error: " + String(kp_error));
 }
 
 re_command check_receiver()
 {
-  int re_1_state = digitalRead(re_1);
-  int re_2_state = digitalRead(re_2);
-  int re_3_state = digitalRead(re_3);
-  int re_4_state = digitalRead(re_4);
+  int joy_x_value = analogRead(joy_x);
+
   if (RF_debug_mode) {
-    Serial.println("PIN 1: " + String(re_1_state));
-    Serial.println("PIN 2: " + String(re_2_state));
-    Serial.println("PIN 3: " + String(re_3_state));
-    Serial.println("PIN 4: " + String(re_4_state));
+    Serial.println("PIN X: " + String(joy_x_value));
   }
   re_command command = stay;
-  if (re_4_state == 1) {  // forward
+
+  if (joy_x_value >= 1000) {  // forward
     command = forward;
   }
-  else if (re_3_state == 1) {  // backward
+  else if (joy_x_value <= 23) {  // backward
     command = backward;
-  }
-  else if (re_2_state == 1) {  // left
-    command = left;
-  }
-  else if (re_1_state == 1) {  // right
-    command = right;
   }
 
   return command;
@@ -164,11 +156,8 @@ void setup() {
   pinMode(dir2_R_PIN, OUTPUT);
   pinMode(speed_R_PIN, OUTPUT);
 
-  // Receiver
-  pinMode(re_1, INPUT);
-  pinMode(re_2, INPUT);
-  pinMode(re_3, INPUT);
-  pinMode(re_4, INPUT);
+  // JoyStick
+  pinMode(joy_x, INPUT);
 
   // Timer
   pas_time = millis();
@@ -176,10 +165,15 @@ void setup() {
 
 /*======================main loop======================*/
 void loop() {
+
+  //  throttle moving_flag
+  int moving_flag = 0;
+  float control_signal = 0;
   // calculate time
   now_time = millis();
-  dif_time = (now_time - pas_time)/1000; // in seconds. We work in ms so we haveto divide the value by 1000
+  dif_time = (now_time - pas_time) / 1000; // in seconds. We work in ms so we haveto divide the value by 1000
   pas_time = now_time;
+
   // Update IMU data
   if ( imu_9250.dataReady() )
   {
@@ -188,31 +182,30 @@ void loop() {
     kalman();
   }
 
-  /*
-    // Check the receive message
-    re_command command = check_receiver();
-    if (command == forward) {
-    Serial.println("Received message: forward " + String(command));
-    }
-    else if (command == backward) {
-    Serial.println("Received message: backward " + String(command));
-    }
-    else if (command == left) {
-    Serial.println("Received message: left " + String(command));
-    }
-    else if (command == right) {
-    Serial.println("Received message: right " + String(command));
-    }
-    else {
-    //Serial.println("Received message: stay " + String(command));
-    }*/
-
-  // PID and motor
-  float control_signal = pid_control();
-  control_signal = constrain(control_signal, -90, 90);
-  if (control_signal > 0 && control_signal < MIN_SPEED) {control_signal = MIN_SPEED;}
-  else if (control_signal < 0  && control_signal > -MIN_SPEED) {control_signal = -MIN_SPEED;}
+  // Check the receive message
+  re_command command = check_receiver();
+  if (command == forward) {
+    control_signal = throttle;
+    moving_flag = 1;
+  }
+  else if (command == backward) {
+    control_signal = -throttle;
+    moving_flag = 1;
+  }
   
+  // PID
+  if (moving_flag == 0) {
+    control_signal = pid_control();
+    control_signal = constrain(control_signal, -MAX_SPEED, MAX_SPEED);
+    if (control_signal > 0 && control_signal < MIN_SPEED) {
+      control_signal = MIN_SPEED;
+    }
+    else if (control_signal < 0  && control_signal > -MIN_SPEED) {
+      control_signal = -MIN_SPEED;
+    }
+  }
+
+  // Apply the signal to the motor
   if (control_signal < 0) {
     analogWrite(speed_L_PIN, abs(control_signal));
     analogWrite(speed_R_PIN, abs(control_signal));
@@ -230,6 +223,8 @@ void loop() {
     digitalWrite(dir1_R_PIN, LOW);
     digitalWrite(dir2_R_PIN, HIGH);
   }
-  printIMUData(control_signal);
+
+  // print out the debug thing
+  if (PID_debug_mode) printIMUData(control_signal);
 }
 
