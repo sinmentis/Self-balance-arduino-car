@@ -4,7 +4,7 @@
 /*======================Global variable======================*/
 
 // Debug mode
-int PID_debug_mode = 0;
+int PID_debug_mode = 1;
 int RF_debug_mode = 0;
 
 // MPU9250
@@ -34,9 +34,9 @@ float MIN_SPEED = 25;
 float MAX_SPEED = 50;
 
 // PID
-float kp = 18;// 10.1 18
-float ki = 0.5;// 0.3
-float kd = 16;// 9.3 16
+float kp = 22;// 10.1 18
+float ki = 0.4;// 0.3
+float kd = 20;// 9.3 16
 float kp_error = 0.0;
 float ki_error = 0.0;
 float kd_error = 0.0;
@@ -47,14 +47,14 @@ float kd_result = 0;
 float final_result = 0;
 
 // Special angle
-float overshoot_angle = 60;
+float overshoot_angle = 30;
 float PID_angle = 8;
 float reference_angle = 0.0;
 
 // Joystick
 int joy_x = A0;
 enum re_command {forward = 1, backward = 2, stay = 0};
-float throttle = 45;
+float throttle = 50;
 
 // Timer
 float now_time;
@@ -87,14 +87,14 @@ re_command check_receiver()
 {
   int joy_x_value = analogRead(joy_x);
   re_command command = stay;
-  
-  if (joy_x_value >= 1000) command = forward;
-  else if (joy_x_value <= 23) command = backward;
-  
+
+  if (joy_x_value >= 1000) {command = forward;}
+  else if (joy_x_value <= 23) {command = backward;}
+
   if (RF_debug_mode) {
     Serial.println("PIN X: " + String(joy_x_value));
   }
-  
+
   return command;
 }
 
@@ -102,8 +102,9 @@ float pid_control() { // ONLY PD RIGHT NOW
   kp_error = kalAngleY - reference_angle;
 
   // If the car is about to fall down, adjust it quickly
-  if (kp_error >= overshoot_angle && kp_error <= -overshoot_angle) kp = 25;
-  
+  if (kp_error >= overshoot_angle && kp_error <= -overshoot_angle) {kp = 40;}
+  else {kp = 22;}
+
   ki_error += kp_error * dif_time;
   kd_error = (kp_error - kp_pass_error) / dif_time;
   kp_result = kp_error * kp;
@@ -116,7 +117,7 @@ float pid_control() { // ONLY PD RIGHT NOW
   if (kp_error <= PID_angle && kp_error >= -PID_angle) {
     final_result = kp_result + kd_result + ki_result;
   }
-  
+
   return final_result;
 }
 
@@ -177,7 +178,7 @@ void loop() {
   //  throttle moving_flag
   int moving_flag = 0;
   float control_signal = 0;
-  
+
   // calculate time
   now_time = millis();
   dif_time = (now_time - pas_time) / 1000; // in seconds. We work in ms so we haveto divide the value by 1000
@@ -191,29 +192,18 @@ void loop() {
     kalman();
   }
 
+  // PID
+  control_signal = pid_control();
+
+  // constrain the max min speed
+  if (control_signal >= 0) {control_signal = constrain(control_signal, MIN_SPEED, MAX_SPEED);}
+  else {control_signal = constrain(control_signal, -MAX_SPEED, -MIN_SPEED);}
+
   // Check the receive message
   re_command command = check_receiver();
-  if (command == forward) {
-    control_signal = throttle;
-    moving_flag = 1;
-  }
-  else if (command == backward) {
-    control_signal = -throttle;
-    moving_flag = 1;
-  }
-
-  // PID
-  if (moving_flag == 0) {
-    control_signal = pid_control();
-    control_signal = constrain(control_signal, -MAX_SPEED, MAX_SPEED);
-    if (control_signal > 0 && control_signal < MIN_SPEED) {
-      control_signal = MIN_SPEED;
-    }
-    else if (control_signal < 0  && control_signal > -MIN_SPEED) {
-      control_signal = -MIN_SPEED;
-    }
-  }
-
+  if (command == forward) {control_signal = throttle;}
+  else if (command == backward) {control_signal = -throttle;}
+  
   // Apply the signal to the motor
   if (control_signal < 0) {
     analogWrite(speed_L_PIN, abs(control_signal));
